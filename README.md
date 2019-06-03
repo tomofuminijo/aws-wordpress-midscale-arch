@@ -11,10 +11,22 @@ WordPress のリファレンスアーキテクチャは以下のURL で提供さ
 
 ![architecture-overview](images/WordPress-Mid-Architecture.png)
 
-WordPress 用のEC2 インスタンスは2種類用意します。記事投稿や運用管理ようのMaster インスタンスと記事参照用のReader インスタンスです。Reader インスタンスはASG 構成とします。WordPress のアップデートやOS のパッチ更新などはMaster に対して実施します。Master からAMI を作成してReader 用のASG に適用するといった運用になります。  
-WordPress 前段には、Application Load Balancder(ALB) を配置します。管理系のリクエストは、Master インスタンスにルーティングし、その他のリクエストはASG 配下のReader インスタンスへルーティングするように設定します。
-データベースはRDS (MySQL) を利用します。コストを考えて、Multi-AZ 構成はオプションで選択できるようにします。RDS が落ちてから復旧するまである程度時間が掛かってもよいという場合にはシングル構成がコスト効率が良いです。  
-画像データはS3 に格納します。その際にWordPress のプラグインを構成します。  
+WordPress 用のEC2 インスタンスは2種類用意します。記事投稿や運用管理用のMaster インスタンスと、記事参照用のReader インスタンスです。  
+Reader インスタンスはASG 構成とします。WordPress のアップデートやOS のパッチ更新などはMaster に対して実施します。Master からAMI を作成してReader 用のASG に適用するといった運用になります。   
+
+
+WordPress 前段には、Application Load Balancder(ALB) を配置します。管理系のリクエストは、Master インスタンスにルーティングし、その他のリクエストはASG 配下のReader インスタンスへルーティングするように設定します。また、ALB のDNS名 に対するリクエストは拒否するようにALB のリスナールールを設定します。これにより、ALB はCloudFront 経由からのリクエストのみを処理するようになります。 
+
+
+エンドユーザとCloudFront、CloudFront とALB 間は HTTPS で通信を行います。証明書はACM で管理します。  
+
+- エンドユーサ -- https --> CloudFront -- https --> ALB -- http --> WordPress  
+
+
+データベースはRDS (MySQL) を利用します。RDS のユーザ名/パスワードはSecrets Manager を利用して管理します。コストを考えて、Multi-AZ 構成はオプションで選択できるようにします。RDS が落ちてから復旧するまである程度時間が掛かってもよいという場合にはシングル構成がコスト効率が良いです。  
+
+
+画像データはS3 に格納します。S3 用のWordPress のプラグインを構成します。  
 エンドユーザからのアクセスは、Route 53 で名前解決をしてCloudFront 経由でALB にリクエストをルーティングします。画像データの場合は、S3 にルーティングします。  
 
 なお、現状のテンプレートは**東京リージョンのみ対応**しています。   
@@ -36,15 +48,13 @@ Route53 を利用してドメインを登録すると、自動的にRoute 53 の
 
 ## 環境変数の設定
 
-まずは環境変数をセットします。
+環境変数をセットします。
 
 ```sh
 # Network
 NW_STACK_NAME="WordPressNW"
 # RDS
 RDS_STACK_NAME="WordPressRDS"
-RDS_MASTER_USER_NAME="wpuser" 
-RDS_MASTER_USER_PASSWORD="rewrite_this_with_your_password" # 適宜変更してください
 RDS_MULTI_AZ_ENABLED="false"  # Multi-AZ 有効化したい場合はtrue
 # S3
 S3_STACK_NAME="WordPressS3"
@@ -85,7 +95,8 @@ aws cloudformation wait stack-create-complete --stack-name $NW_STACK_NAME
 
 ## RDS Stack の作成
 
-以下のコマンドでRDS Stack を作成します。
+以下のコマンドでRDS Stack を作成します。   
+RDS のマスターユーザ名/パスワードは自動生成されます。ユーザ名/パスワードはRDS エンドポイント名やデータベース名と合わせてSecrets Manager に保存されます。
 
 ```sh
 
@@ -147,8 +158,8 @@ LB_SECURITY_GROUP=$(aws cloudformation describe-stacks --stack-name $NW_STACK_NA
 echo $LB_SECURITY_GROUP
 WEB_SECURITY_GROUP=$(aws cloudformation describe-stacks --stack-name $NW_STACK_NAME --query "Stacks[0].Outputs[?OutputKey == 'WebSecurityGroup'].[OutputValue]" --output text)
 echo $WEB_SECURITY_GROUP
-RDS_ENDPOINT_ADDRESS=$(aws cloudformation describe-stacks --stack-name $RDS_STACK_NAME --query "Stacks[0].Outputs[?OutputKey == 'RDSEndpointAddress'].[OutputValue]" --output text)
-echo $RDS_ENDPOINT_ADDRESS
+RDS_SECRET=$(aws cloudformation describe-stacks --stack-name $RDS_STACK_NAME --query "Stacks[0].Outputs[?OutputKey == 'RDSSecret'].[OutputValue]" --output text)
+echo $RDS_SECRET
 
 aws cloudformation create-stack --stack-name $WEB_STACK_NAME \
     --template-body file://templates/wordpress-midarch-04-web.yaml \
@@ -160,11 +171,9 @@ aws cloudformation create-stack --stack-name $WEB_STACK_NAME \
     ParameterKey=WebSecurityGroup,ParameterValue=${WEB_SECURITY_GROUP} \
     ParameterKey=WordPressContentsS3BucketName,ParameterValue=${S3_CONTENTS_BUCKET_NAME} \
     ParameterKey=WordPressLogsS3BucketName,ParameterValue=${S3_LOGS_BUCKET_NAME}  \
+    ParameterKey=RDSSecret,ParameterValue=${RDS_SECRET}  \
     ParameterKey=PublicAlbAcmCertificate,ParameterValue=${WEB_ACM_CERTIFICATE_ARN}  \
     ParameterKey=WordPressServerDesiredCapacity,ParameterValue=0 \
-    ParameterKey=DBMasterUsername,ParameterValue=${RDS_MASTER_USER_NAME} \
-    ParameterKey=DBMasterUserPassword,ParameterValue=${RDS_MASTER_USER_PASSWORD} \
-    ParameterKey=RDSEndpointAddress,ParameterValue=${RDS_ENDPOINT_ADDRESS} \
     ParameterKey=WPDomainName,ParameterValue=${WORDPRESS_DOMAIN_NAME} \
     ParameterKey=WPTitle,ParameterValue=${WORDPRESS_TITLE} \
     ParameterKey=WPAdminEmail,ParameterValue=${WORDPRESS_ADMIN_EMAIL} \
@@ -203,7 +212,7 @@ aws cloudformation wait stack-create-complete --stack-name $CF_STACK_NAME
 
 ## Route 53 の構成
 
-Route 53 はCLI のみで設定します。
+Route 53 はCFn ではなく CLI のみで設定します。
 
 
 ```sh
@@ -316,26 +325,24 @@ Desireted Capacity を任意の数に設定して、先ほど作成したAMI を
 WORDPRESS_SERVER_DESIRED_CAPACITY=1
 
 aws cloudformation update-stack --stack-name $WEB_STACK_NAME \
-    --template-body file://templates/wordpress-midarch-04-web.yaml \
+    --use-previous-template \
     --parameters \
-    ParameterKey=VPCId,ParameterValue=${VPC_ID} \
-    ParameterKey=WordPressAMI,ParameterValue=${NEW_AMI_ID} \
-    ParameterKey=PublicSubnetId1,ParameterValue=${PUBLIC_SUBNET_ID1} \
-    ParameterKey=PublicSubnetId2,ParameterValue=${PUBLIC_SUBNET_ID2} \
-    ParameterKey=LBSecurityGroup,ParameterValue=${LB_SECURITY_GROUP} \
-    ParameterKey=WebSecurityGroup,ParameterValue=${WEB_SECURITY_GROUP} \
-    ParameterKey=WordPressContentsS3BucketName,ParameterValue=${S3_CONTENTS_BUCKET_NAME} \
-    ParameterKey=WordPressLogsS3BucketName,ParameterValue=${S3_LOGS_BUCKET_NAME}  \
-    ParameterKey=PublicAlbAcmCertificate,ParameterValue=${WEB_ACM_CERTIFICATE_ARN}  \
     ParameterKey=WordPressServerDesiredCapacity,ParameterValue=${WORDPRESS_SERVER_DESIRED_CAPACITY} \
-    ParameterKey=DBMasterUsername,ParameterValue=${RDS_MASTER_USER_NAME} \
-    ParameterKey=DBMasterUserPassword,ParameterValue=${RDS_MASTER_USER_PASSWORD} \
-    ParameterKey=RDSEndpointAddress,ParameterValue=${RDS_ENDPOINT_ADDRESS} \
-    ParameterKey=WPDomainName,ParameterValue=${WORDPRESS_DOMAIN_NAME} \
-    ParameterKey=WPTitle,ParameterValue=${WORDPRESS_TITLE} \
-    ParameterKey=WPAdminEmail,ParameterValue=${WORDPRESS_ADMIN_EMAIL} \
-    ParameterKey=WPAdminUsername,ParameterValue=${WORDPRESS_ADMIN_USERNAME} \
-    ParameterKey=WPAdminPassword,ParameterValue=${WORDPRESS_ADMIN_PASSWORD} \
+    ParameterKey=WordPressAMI,ParameterValue=${NEW_AMI_ID} \
+    ParameterKey=VPCId,UsePreviousValue=true \
+    ParameterKey=PublicSubnetId1,UsePreviousValue=true \
+    ParameterKey=PublicSubnetId2,UsePreviousValue=true \
+    ParameterKey=LBSecurityGroup,UsePreviousValue=true \
+    ParameterKey=WebSecurityGroup,UsePreviousValue=true \
+    ParameterKey=WordPressContentsS3BucketName,UsePreviousValue=true \
+    ParameterKey=WordPressLogsS3BucketName,UsePreviousValue=true  \
+    ParameterKey=RDSSecret,UsePreviousValue=true  \
+    ParameterKey=PublicAlbAcmCertificate,UsePreviousValue=true  \
+    ParameterKey=WPDomainName,UsePreviousValue=true \
+    ParameterKey=WPTitle,UsePreviousValue=true \
+    ParameterKey=WPAdminEmail,UsePreviousValue=true \
+    ParameterKey=WPAdminUsername,UsePreviousValue=true \
+    ParameterKey=WPAdminPassword,UsePreviousValue=true \
     --capabilities CAPABILITY_NAMED_IAM
 ```
 

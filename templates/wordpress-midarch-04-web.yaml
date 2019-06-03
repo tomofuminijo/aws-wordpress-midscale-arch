@@ -25,7 +25,10 @@ Parameters:
   WordPressAMI:
     Description: WordPress installed & Configured AMI
     Type: String
-    Default: 'ami-00d101850e971728d'
+    Default: ''
+  RDSSecret:
+    Description: WordPressRDS Secret ARN
+    Type: String
   WordPressServerInstanceClass:
     Description: WordPress Server Instance Class
     Type: String
@@ -38,30 +41,6 @@ Parameters:
     Description: WordPress Server ASG DesiredCapacity
     Type: String
     Default: '1'
-  RDSEndpointAddress:
-    Description: The Amazon RDS EndpointAddress.
-    Type: String
-  DBName:
-    AllowedPattern: ^([a-zA-Z0-9]*)$
-    Description: The Amazon RDS master database name.
-    Default: 'wordpress'
-    Type: String
-  DBMasterUsername:
-    AllowedPattern: ^([a-zA-Z0-9]*)$
-    Description: The Amazon RDS master username.
-    ConstraintDescription: Must contain only alphanumeric characters (minimum 8; maximum 16).
-    MaxLength: 16
-    MinLength: 6
-    Default: wpuser
-    Type: String
-  DBMasterUserPassword:
-    AllowedPattern: ^([a-z0-9A-Z`~!#$%^&*()_+,\\-])*$
-    ConstraintDescription: Must be letters (upper or lower), numbers, and these special characters '_'`~!#$%^&*()_+,-    
-    Description: The Amazon RDS master password.
-    MaxLength: 41
-    MinLength: 8
-    NoEcho: true
-    Type: String
   WPDirectory:
     AllowedPattern: ^([a-zA-Z0-9])([a-zA-Z0-9_-])*([a-zA-Z0-9])$
     Description: The WordPress site directory.
@@ -100,10 +79,18 @@ Parameters:
     Type: String
 
 Conditions:
+  InitialSetup:
+    !Equals [ '', !Ref WordPressAMI ]
   SslCertificate:
     !Not [!Equals [ '', !Ref PublicAlbAcmCertificate ] ]
   NoSslCertificate:
     !Equals [ '', !Ref PublicAlbAcmCertificate ]
+
+Mappings:
+
+  RegionMap:
+    ap-northeast-1:
+      AMI: ami-00d101850e971728d
 
 Resources:
 
@@ -131,8 +118,11 @@ Resources:
       Certificates:
         - CertificateArn: !Ref PublicAlbAcmCertificate
       DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref WordPressTargetGroup
+        - Type: fixed-response
+          FixedResponseConfig:
+            ContentType: 'text/plain'
+            MessageBody: 'Forbidden'
+            StatusCode: '403'
       LoadBalancerArn: !Ref WordPressALB
       Port: 443
       Protocol: HTTPS
@@ -141,8 +131,11 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref WordPressTargetGroup
+        - Type: fixed-response
+          FixedResponseConfig:
+            ContentType: 'text/plain'
+            MessageBody: 'Forbidden'
+            StatusCode: '403'
       LoadBalancerArn: !Ref WordPressALB
       Port: 80
       Protocol: HTTP
@@ -157,9 +150,28 @@ Resources:
           Values:
             - '/wp-login.php'
             - '/wp-admin/*'
+        - Field: 'host-header'
+          Values:
+            - !Ref WPDomainName
       ListenerArn: 
         !If [ SslCertificate, !Ref WordPressSslListener, !Ref WordPressNoSslListener ]
       Priority: 1
+  ReaderListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref WordPressTargetGroup
+      Conditions:
+        - Field: 'path-pattern'
+          Values:
+            - '*'
+        - Field: 'host-header'
+          Values:
+            - !Ref WPDomainName
+      ListenerArn: 
+        !If [ SslCertificate, !Ref WordPressSslListener, !Ref WordPressNoSslListener ]
+      Priority: 2
   WordPressMasterTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     DependsOn: WordPressMasterServerWaitCondition
@@ -231,6 +243,9 @@ Resources:
                 Resource:
                   - !Sub 'arn:aws:s3:::${WordPressContentsS3BucketName}'
                   - !Sub 'arn:aws:s3:::${WordPressContentsS3BucketName}/*'
+              - Effect: Allow
+                Action: 'secretsmanager:GetSecretValue'
+                Resource: !Ref RDSSecret
       ManagedPolicyArns:
         - 'arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM'
   WordPressServerInstanceProfile:
@@ -244,7 +259,7 @@ Resources:
     Properties:
       LaunchTemplateName: 'WordPressServerLaunchTemplate'
       LaunchTemplateData:
-        ImageId: !Ref WordPressAMI
+        ImageId: !If [ InitialSetup, !FindInMap [ RegionMap, !Ref 'AWS::Region', AMI ], !Ref WordPressAMI ]
         InstanceType: !Ref WordPressServerInstanceClass
         IamInstanceProfile: 
           Name: !Ref WordPressServerInstanceProfile
@@ -361,11 +376,23 @@ Resources:
                       mkdir -p /var/www/wordpress/${WPDirectory}
                   
                       cd /var/www/wordpress/${WPDirectory}
+
+                      # Get RDS Secrets
+                      RDSSECRETS=$(aws secretsmanager  get-secret-value --secret-id WordPressRDSSecret-PaUgRaJJPSEC --query "SecretString" --region ${AWS::Region} --output text)
+                      DBName=$(echo ${!RDSSECRETS} | jq -r '.dbname')
+                      DBMasterUsername=$(echo ${!RDSSECRETS} | jq -r '.username')
+                      DBMasterUserPassword=$(echo ${!RDSSECRETS} | jq -r '.password')
+                      RDSEndpointAddress=$(echo ${!RDSSECRETS} | jq -r '.host')
+
+                      echo DBName: ${!DBName}
+                      echo DBMasterUsername: ${!DBMasterUsername}
+                      echo RDSEndpointAddress: ${!RDSEndpointAddress}
+
                       # install wordpress if not installed
                       # use public alb host name if wp domain name was empty
                       if ! $(wp core is-installed --allow-root); then
                           wp core download --version='${WPVersion}' --locale=ja --allow-root  
-                          wp core config --dbname='${DBName}' --dbuser='${DBMasterUsername}' --dbpass='${DBMasterUserPassword}' --dbhost='${RDSEndpointAddress}' --dbprefix=wp_ --allow-root
+                          wp core config --dbname="${!DBName}" --dbuser="${!DBMasterUsername}" --dbpass="${!DBMasterUserPassword}" --dbhost="${!RDSEndpointAddress}" --dbprefix=wp_ --allow-root
                           wp core install --url='https://${WPDomainName}' --title='${WPTitle}' --admin_user='${WPAdminUsername}' --admin_password='${WPAdminPassword}' --admin_email='${WPAdminEmail}' --skip-email --allow-root
                           sed -i "/$table_prefix = 'wp_';/ a \$_SERVER['HTTPS'] = 'on';" /var/www/wordpress/${WPDirectory}/wp-config.php
 
@@ -429,7 +456,7 @@ Resources:
  
             # Install packages
             amazon-linux-extras install php7.2 -y
-            yum -y install mysql httpd php-mbstring php-xml
+            yum -y install mysql httpd php-mbstring php-xml jq
 
             # Setting Up Configs 
             mkdir -p /var/www/wordpress

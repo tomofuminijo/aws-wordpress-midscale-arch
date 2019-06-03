@@ -39,22 +39,6 @@ Parameters:
     Default: db.t2.micro
     Description: The Amazon RDS database instance class.
     Type: String
-  DBMasterUsername:
-    AllowedPattern: ^([a-zA-Z0-9]*)$
-    Description: The Amazon RDS master username.
-    ConstraintDescription: Must contain only alphanumeric characters (minimum 8; maximum 16).
-    MaxLength: 16
-    MinLength: 6
-    Default: wpuser
-    Type: String
-  DBMasterUserPassword:
-    AllowedPattern: ^([a-z0-9A-Z`~!#$%^&*()_+,\\-])*$
-    ConstraintDescription: Must be letters (upper or lower), numbers, and these special characters '_'`~!#$%^&*()_+,-    
-    Description: The Amazon RDS master password.
-    MaxLength: 41
-    MinLength: 8
-    NoEcho: true
-    Type: String
   DBName:
     AllowedPattern: ^([a-zA-Z0-9]*)$
     Description: The Amazon RDS master database name.
@@ -86,6 +70,21 @@ Conditions:
   NoSnapshot:
     !Equals ['', !Ref DBRestoreSnapshotArn]
 Resources:
+  WordPressRDSSecret:
+    Type: "AWS::SecretsManager::Secret"
+    Properties:
+      Description: "This is a Secrets Manager secret for an RDS DB instance"
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "admin"}'
+        GenerateStringKey: "password"
+        PasswordLength: 16
+        ExcludeCharacters: '"@/\'
+  SecretRDSInstanceAttachment:
+    Type: "AWS::SecretsManager::SecretTargetAttachment"
+    Properties:
+      SecretId: !Ref WordPressRDSSecret
+      TargetId: !Ref WordPressRDS
+      TargetType: AWS::RDS::DBInstance
   WordPressDBSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties: 
@@ -111,8 +110,8 @@ Resources:
       EngineVersion: !Ref DBEngineVersion
       DBSnapshotIdentifier: !If [ NoSnapshot, !Ref 'AWS::NoValue', !Ref DBRestoreSnapshotArn]
       DBName: !If [ NoSnapshot, !Ref DBName, !Ref 'AWS::NoValue']
-      MasterUsername: !If [ NoSnapshot, !Ref DBMasterUsername, !Ref 'AWS::NoValue']
-      MasterUserPassword: !If [ NoSnapshot, !Ref DBMasterUserPassword, !Ref 'AWS::NoValue']
+      MasterUsername: !If [ NoSnapshot, !Join ['', ['{{resolve:secretsmanager:', !Ref WordPressRDSSecret, ':SecretString:username}}' ]], !Ref 'AWS::NoValue']
+      MasterUserPassword: !If [ NoSnapshot, !Join ['', ['{{resolve:secretsmanager:', !Ref WordPressRDSSecret, ':SecretString:password}}' ]], !Ref 'AWS::NoValue']
       DBSubnetGroupName: !Ref WordPressDBSubnetGroup
       CopyTagsToSnapshot: 'true'
       BackupRetentionPeriod: !Ref BackupRetentionPeriod
@@ -128,6 +127,9 @@ Resources:
               - RDB
     DeletionPolicy: 'Delete'
 Outputs:
+  RDSSecret:
+    Value: !Ref WordPressRDSSecret
+    Description: WordPressRDS Secret
   RDSEndpointAddress:
     Value: !GetAtt WordPressRDS.Endpoint.Address
     Description: WordPressRDS Endpoint address
