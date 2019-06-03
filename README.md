@@ -286,10 +286,10 @@ aws route53  get-change --id /change/xxxxxx
 Master インスタンスのAMI を作成して、Web Stack に反映します。
 
 ```sh
-# Get Latest Corp Blog Master InstanceId
+# Get Latest WordPress Master InstanceId
 LATEST_MASTER_INSTANCEID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=WordPressMasterServer,Name=tag:role,Values=master" --query "Reservations[].Instances[?State.Name != 'terminated'].[InstanceId, LaunchTime][] | sort_by(@, &[1]) | reverse(@)[0][0]" --output text)
 
-# Create Image for CorpBlog Master Insatnce
+# Create Image for WordPress Master Insatnce
 NEW_AMI_NAME=WordPressServer-$(date "+%Y%m%d-%H%M%S")
 NEW_AMI_ID=$(aws ec2 create-image --instance-id $LATEST_MASTER_INSTANCEID --name $NEW_AMI_NAME --query "ImageId" --output text)
 
@@ -299,7 +299,7 @@ aws ec2 create-tags --resources $NEW_AMI_ID --tags Key=Name,Value=$NEW_AMI_NAME
 # wait for images to be available
 aws ec2 wait image-available --image-ids $NEW_AMI_ID
 
-# (Option) Delete old ami keeping 4 generations
+# (Option) Delete old ami with keeping 4 generations
 AMI_LIST=($(aws ec2 describe-images --filters "Name=tag:Name,Values=WordPressServer*" --query "Images[].[ImageId, CreationDate] | sort_by(@, &[1])[*][0]" --output text))
 for ((i=0 ; i<${#AMI_LIST[@]}-4 ; i++))
 do
