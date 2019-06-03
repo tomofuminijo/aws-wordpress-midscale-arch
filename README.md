@@ -259,7 +259,7 @@ aws route53  get-change --id /change/xxxxxx
 
 ## WordPress S3 Plugin の設定
 
-すでにS3 Plubli (WP Offload Media Lite) はインストールされていますので、S3 と連携するように設定します。
+すでにS3 Plugin (WP Offload Media Lite) はインストールされていますので、S3 と連携するように設定します。
 
 1. 次のURL にアクセスする。
 
