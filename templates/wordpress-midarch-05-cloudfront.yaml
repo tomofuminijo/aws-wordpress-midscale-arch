@@ -1,0 +1,125 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: WordPress Middle Scale Architecture Edge Layser
+Parameters:
+  WordPressContentsS3BucketName:
+    Description: S3 Bucket Name for Contents
+    Type: String
+  CloudFrontAcmCertificate:
+    AllowedPattern: ^$|(arn:aws:acm:)([a-z0-9/:-])*([a-z0-9])$
+    Description: 'The AWS Certification Manager certificate ARN for the CloudFormation certificate - this certificate should be created in the region you wish to run the ALB and must reference the WordPress domain name you use below.'
+    Type: String
+  WPDomainName:
+    AllowedPattern: ^$|(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$
+    Description: 'The main domain name of the WordPress site (e.g. example.com). Leave empty to use the ALB DNS name for the WordPress site.'
+    Type: String
+  WordPressALBDnsName:
+    AllowedPattern: ^$|(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$
+    Description: 'The main domain name of the WordPress site (e.g. example.com). Leave empty to use the ALB DNS name for the WordPress site.'
+    Type: String
+
+Resources:
+  CloudFrontDistributionSslCertificate:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Aliases: 
+          - !Ref WPDomainName
+        CacheBehaviors:
+        - PathPattern: wp-content/uploads/*
+          AllowedMethods:
+          - DELETE
+          - GET
+          - HEAD
+          - OPTIONS
+          - PATCH
+          - POST
+          - PUT
+          DefaultTTL: 900
+          MaxTTL: 900
+          MinTTL: 900
+          ForwardedValues:
+            QueryString: false
+          TargetOriginId: s3
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+        - PathPattern: wp-includes/*
+          AllowedMethods:
+          - DELETE
+          - GET
+          - HEAD
+          - OPTIONS
+          - PATCH
+          - POST
+          - PUT
+          DefaultTTL: 900
+          MaxTTL: 900
+          MinTTL: 900
+          ForwardedValues:
+            QueryString: true
+            Headers:
+            - Host
+          TargetOriginId: elb
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+        - PathPattern: wp-content/*
+          AllowedMethods:
+          - DELETE
+          - GET
+          - HEAD
+          - OPTIONS
+          - PATCH
+          - POST
+          - PUT
+          DefaultTTL: 900
+          MaxTTL: 900
+          MinTTL: 900
+          ForwardedValues:
+            QueryString: true
+            Headers:
+            - Host
+          TargetOriginId: elb
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+        Comment: !Ref 'AWS::StackName'
+        DefaultCacheBehavior:
+          AllowedMethods:
+          - DELETE
+          - GET
+          - HEAD
+          - OPTIONS
+          - PATCH
+          - POST
+          - PUT
+          DefaultTTL: 0
+          MaxTTL: 0
+          MinTTL: 0
+          ForwardedValues:
+            QueryString: true
+            Headers:
+            - '*'
+            Cookies:
+              Forward: all
+          TargetOriginId: elb
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+        Enabled: true
+        Origins:
+        - DomainName: !Ref WordPressALBDnsName
+          Id: elb
+          CustomOriginConfig:
+            OriginProtocolPolicy: https-only
+        - DomainName: !Sub ${WordPressContentsS3BucketName}.s3.amazonaws.com
+          Id: s3
+          CustomOriginConfig:
+            OriginProtocolPolicy: https-only
+        PriceClass: PriceClass_200
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CloudFrontAcmCertificate
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1
+
+Outputs:
+  DnsEndpoint:
+    Value: !GetAtt CloudFrontDistributionSslCertificate.DomainName
+  DnsHostname:
+    Value: !Join [ '', [ 'https://', !GetAtt CloudFrontDistributionSslCertificate.DomainName ] ]

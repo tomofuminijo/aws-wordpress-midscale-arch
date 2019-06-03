@@ -1,0 +1,136 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: WordPress Middle Scale Architecture RDS
+Parameters:
+  PrivateSubnetId1:
+    Description: Subnet 1 for RDS Subnet Group
+    Type: String
+  PrivateSubnetId2:
+    Description: Subnet 2 for RDS Subnet Group
+    Type: String
+  DBSecurityGroup:
+    Description: Security Group for DB
+    Type: String
+  DBInstanceIdentifier:
+    Description: RDS DB Instance Identifire
+    Type: String
+    Default: 'wordpressdb'
+  DBEngineVersion: 
+    Description: DB Engine Version
+    Type: String
+    Default: '5.7.22'
+  DBInstanceClass:
+    Description: DB Instance Class
+    AllowedValues:
+      - db.t2.micro
+      - db.t2.small
+      - db.t2.medium
+      - db.r3.large
+      - db.r3.xlarge
+      - db.r3.2xlarge
+      - db.r3.4xlarge
+      - db.r3.8xlarge
+      - db.r4.large
+      - db.r4.xlarge
+      - db.r4.2xlarge
+      - db.r4.4xlarge
+      - db.r4.8xlarge
+      - db.r4.16xlarge
+    ConstraintDescription: Must be a valid RDS instance class.
+    Default: db.t2.micro
+    Description: The Amazon RDS database instance class.
+    Type: String
+  DBMasterUsername:
+    AllowedPattern: ^([a-zA-Z0-9]*)$
+    Description: The Amazon RDS master username.
+    ConstraintDescription: Must contain only alphanumeric characters (minimum 8; maximum 16).
+    MaxLength: 16
+    MinLength: 6
+    Default: wpuser
+    Type: String
+  DBMasterUserPassword:
+    AllowedPattern: ^([a-z0-9A-Z`~!#$%^&*()_+,\\-])*$
+    ConstraintDescription: Must be letters (upper or lower), numbers, and these special characters '_'`~!#$%^&*()_+,-    
+    Description: The Amazon RDS master password.
+    MaxLength: 41
+    MinLength: 8
+    NoEcho: true
+    Type: String
+  DBName:
+    AllowedPattern: ^([a-zA-Z0-9]*)$
+    Description: The Amazon RDS master database name.
+    Default: 'wordpress'
+    Type: String
+  BackupRetentionPeriod:
+    Description: DB Backup Retention Period
+    Type: String
+    Default: '7'
+  DBRestoreSnapshotArn:
+    Description: DB Restore Snapshot ARN
+    Default: ''
+    Type: String
+  DBEncrpytedBoolean:
+    AllowedValues:
+      - true
+      - false
+    Default: false
+    Description: Indicates whether the DB instances are encrypted.
+    Type: String
+  DBMultiAZBoolean:
+    AllowedValues:
+      - true
+      - false
+    Default: false
+    Description: Indicates whether the DB instances are mauti-az.
+    Type: String
+Conditions:
+  NoSnapshot:
+    !Equals ['', !Ref DBRestoreSnapshotArn]
+Resources:
+  WordPressDBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties: 
+      DBSubnetGroupDescription: 'DBSubnet Group for Wordpress DB'
+      DBSubnetGroupName: 'WordPressDBSubnetGroup'
+      SubnetIds:
+        - !Ref PrivateSubnetId1
+        - !Ref PrivateSubnetId2
+      Tags:
+        - Key: Name
+          Value: !Join 
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - DBSubnetGroup
+  WordPressRDS: 
+    Type: AWS::RDS::DBInstance
+    Properties: 
+      DBInstanceIdentifier: !Ref DBInstanceIdentifier
+      StorageType: 'gp2'
+      AllocatedStorage: '20'
+      DBInstanceClass: !Ref DBInstanceClass
+      Engine: 'MySQL'
+      EngineVersion: !Ref DBEngineVersion
+      DBSnapshotIdentifier: !If [ NoSnapshot, !Ref 'AWS::NoValue', !Ref DBRestoreSnapshotArn]
+      DBName: !If [ NoSnapshot, !Ref DBName, !Ref 'AWS::NoValue']
+      MasterUsername: !If [ NoSnapshot, !Ref DBMasterUsername, !Ref 'AWS::NoValue']
+      MasterUserPassword: !If [ NoSnapshot, !Ref DBMasterUserPassword, !Ref 'AWS::NoValue']
+      DBSubnetGroupName: !Ref WordPressDBSubnetGroup
+      CopyTagsToSnapshot: 'true'
+      BackupRetentionPeriod: !Ref BackupRetentionPeriod
+      MultiAZ: !Ref DBMultiAZBoolean
+      StorageEncrypted: !If [ NoSnapshot, !Ref DBEncrpytedBoolean, !Ref 'AWS::NoValue']
+      VPCSecurityGroups: 
+        - !Ref DBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Join 
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - RDB
+    DeletionPolicy: 'Delete'
+Outputs:
+  RDSEndpointAddress:
+    Value: !GetAtt WordPressRDS.Endpoint.Address
+    Description: WordPressRDS Endpoint address
+  RDSEndpointPort:
+    Value: !GetAtt WordPressRDS.Endpoint.Port
+    Description: WordPressRDS Endpoint Port

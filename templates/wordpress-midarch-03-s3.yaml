@@ -1,0 +1,47 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: WordPress Middle Scale Architecture S3 Setup
+Parameters:
+  WordPressContentsS3BucketName:
+    Description: Bucket Name for contents of WordPress
+    Type: String
+  WordPressLogsS3BucketName:
+    Description: Bucket Name for logs of WordPress
+    Type: String
+Resources:
+  WordPressContentsS3Bucket:
+    Type: 'AWS::S3::Bucket'
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Ref WordPressContentsS3BucketName
+  WordPressLogsS3Bucket: 
+    Type: 'AWS::S3::Bucket'
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Ref WordPressLogsS3BucketName
+  WordPressLogsS3BucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref WordPressLogsS3Bucket
+      PolicyDocument: 
+        Id: ElbLogsPolicy
+        Version: 2012-10-17
+        Statement: 
+          - Action: 
+              - 's3:PutObject'
+            Effect: 'Allow'
+            Resource: !Join 
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref WordPressLogsS3BucketName
+                  - '/AWSLogs/'
+                  - !Ref AWS::AccountId
+                  - '/*'
+            Principal: 
+              AWS: 'arn:aws:iam::582318560864:root'
+Outputs:
+  WordPressContentsS3BucketName:
+    Value: !Ref WordPressContentsS3BucketName
+    Description: WordPressContentsS3BucketName
+  WordPressLogsS3BucketName:
+    Value: !Ref WordPressLogsS3BucketName
+    Description: WordPressLogsS3BucketName

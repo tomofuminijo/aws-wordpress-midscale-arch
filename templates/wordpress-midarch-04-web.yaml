@@ -1,0 +1,446 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: WordPress Middle Scale Architecture Web Layser
+Parameters:
+  VPCId:
+    Description: VPC ID
+    Type: String
+  PublicSubnetId1:
+    Description: Public Subnet Id1
+    Type: String
+  PublicSubnetId2:
+    Description: Public Subnet Id2
+    Type: String
+  LBSecurityGroup:
+    Description: Security Group for ALB
+    Type: String
+  WebSecurityGroup:
+    Description: Security Group for Web Layer
+    Type: String
+  WordPressContentsS3BucketName:
+    Description: S3 Bucket Name for Contents
+    Type: String
+  WordPressLogsS3BucketName:
+    Description: S3 Bucket Name for Logs
+    Type: String
+  WordPressAMI:
+    Description: WordPress installed & Configured AMI
+    Type: String
+    Default: 'ami-00d101850e971728d'
+  WordPressServerInstanceClass:
+    Description: WordPress Server Instance Class
+    Type: String
+    Default: 't2.micro'
+  PublicAlbAcmCertificate:
+    AllowedPattern: ^$|(arn:aws:acm:)([a-z0-9/:-])*([a-z0-9])$
+    Description: 'The AWS Certification Manager certificate ARN for the ALB certificate - this certificate should be created in the region you wish to run the ALB and must reference the WordPress domain name you use below.'
+    Type: String
+  WordPressServerDesiredCapacity:
+    Description: WordPress Server ASG DesiredCapacity
+    Type: String
+    Default: '1'
+  RDSEndpointAddress:
+    Description: The Amazon RDS EndpointAddress.
+    Type: String
+  DBName:
+    AllowedPattern: ^([a-zA-Z0-9]*)$
+    Description: The Amazon RDS master database name.
+    Default: 'wordpress'
+    Type: String
+  DBMasterUsername:
+    AllowedPattern: ^([a-zA-Z0-9]*)$
+    Description: The Amazon RDS master username.
+    ConstraintDescription: Must contain only alphanumeric characters (minimum 8; maximum 16).
+    MaxLength: 16
+    MinLength: 6
+    Default: wpuser
+    Type: String
+  DBMasterUserPassword:
+    AllowedPattern: ^([a-z0-9A-Z`~!#$%^&*()_+,\\-])*$
+    ConstraintDescription: Must be letters (upper or lower), numbers, and these special characters '_'`~!#$%^&*()_+,-    
+    Description: The Amazon RDS master password.
+    MaxLength: 41
+    MinLength: 8
+    NoEcho: true
+    Type: String
+  WPDirectory:
+    AllowedPattern: ^([a-zA-Z0-9])([a-zA-Z0-9_-])*([a-zA-Z0-9])$
+    Description: The WordPress site directory.
+    Default: 'blog'
+    Type: String
+  WPVersion:
+    AllowedValues:
+      - latest
+      - nightly
+      - 5.2
+    Default: latest
+    Description: The WordPress version (make sure this version is compatible with the PHP version selected above).
+    Type: String
+  WPDomainName:
+    AllowedPattern: ^$|(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$
+    Description: '[ Optional ] The main domain name of the WordPress site (e.g. example.com). Leave empty to use the ALB DNS name for the WordPress site.'
+    Default: ''
+    Type: String
+  WPTitle:
+    AllowedPattern: ^([a-zA-Z0-9])([a-zA-Z0-9 _-]*)([a-zA-Z0-9])$
+    Description: The WordPress website title.
+    Type: String
+  WPAdminEmail:
+    AllowedPattern: ^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$
+    Description: The WordPress admin email address.
+    Type: String
+  WPAdminPassword:
+    AllowedPattern: ^([a-zA-Z0-9`~!#$%^&*()_+,\\-])*$
+    ConstraintDescription: Must be letters (upper or lower), numbers, and these special characters '_'`~!#$%^&*()_+,-   
+    Description: The WordPress admin password.
+    Type: String
+    NoEcho: true
+  WPAdminUsername:
+    AllowedPattern: ^([a-zA-Z0-9])([a-zA-Z0-9_-])*([a-zA-Z0-9])$
+    Description: The WordPress admin username.
+    Type: String
+
+Conditions:
+  SslCertificate:
+    !Not [!Equals [ '', !Ref PublicAlbAcmCertificate ] ]
+  NoSslCertificate:
+    !Equals [ '', !Ref PublicAlbAcmCertificate ]
+
+Resources:
+
+  WordPressALB:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Scheme: internet-facing
+      Subnets:
+        - !Ref PublicSubnetId1
+        - !Ref PublicSubnetId2
+      SecurityGroups: 
+        - !Ref LBSecurityGroup
+      LoadBalancerAttributes:
+        - Key: 'access_logs.s3.enabled'
+          Value: 'true'
+        - Key: 'access_logs.s3.bucket'
+          Value: !Ref WordPressLogsS3BucketName
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-ELB
+  WordPressSslListener:
+    Condition: SslCertificate
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref PublicAlbAcmCertificate
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref WordPressTargetGroup
+      LoadBalancerArn: !Ref WordPressALB
+      Port: 443
+      Protocol: HTTPS
+  WordPressNoSslListener:
+    Condition: NoSslCertificate
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref WordPressTargetGroup
+      LoadBalancerArn: !Ref WordPressALB
+      Port: 80
+      Protocol: HTTP
+  AdminListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref WordPressMasterTargetGroup
+      Conditions:
+        - Field: 'path-pattern'
+          Values:
+            - '/wp-login.php'
+            - '/wp-admin/*'
+      ListenerArn: 
+        !If [ SslCertificate, !Ref WordPressSslListener, !Ref WordPressNoSslListener ]
+      Priority: 1
+  WordPressMasterTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: WordPressMasterServerWaitCondition
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 2
+      HealthCheckTimeoutSeconds: 5
+      HealthCheckPath: '/wp-login.php'
+      Matcher: 
+        HttpCode: '200'
+      Name: WordPressMasterTargetGroup
+      Port: 80
+      Protocol: HTTP
+      TargetType: instance
+      VpcId: 
+        !Ref VPCId
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 120
+      Targets:
+        - Id: !Ref WordPressMasterServer
+  WordPressTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: WordPressMasterServerWaitCondition
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 2
+      HealthCheckTimeoutSeconds: 5
+      HealthCheckPath: '/wp-login.php'
+      Matcher: 
+        HttpCode: '200'
+      Name: WordPressTargetGroup
+      Port: 80
+      Protocol: HTTP
+      TargetType: instance
+      VpcId: 
+        !Ref VPCId
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 120
+      Targets:
+        - Id: !Ref WordPressMasterServer
+  WordPressServerRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: WordPressS3Access
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:ListAllMyBuckets'
+                Resource: '*'
+              - Effect: Allow
+                Action: 's3:*'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${WordPressContentsS3BucketName}'
+                  - !Sub 'arn:aws:s3:::${WordPressContentsS3BucketName}/*'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM'
+  WordPressServerInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Roles:
+        - !Ref WordPressServerRole
+      InstanceProfileName: WordPressServerInstanceProfile
+  WordPressServerLaunchTemplate:
+    Type: 'AWS::EC2::LaunchTemplate'
+    Properties:
+      LaunchTemplateName: 'WordPressServerLaunchTemplate'
+      LaunchTemplateData:
+        ImageId: !Ref WordPressAMI
+        InstanceType: !Ref WordPressServerInstanceClass
+        IamInstanceProfile: 
+          Name: !Ref WordPressServerInstanceProfile
+        NetworkInterfaces: 
+          - DeviceIndex: 0
+            Groups: 
+              - !Ref WebSecurityGroup
+            SubnetId:
+              !Ref PublicSubnetId1
+            AssociatePublicIpAddress: true
+            DeleteOnTermination: true
+        UserData:
+          'Fn::Base64':
+            !Sub |
+              #!/bin/bash -ex
+              # Update
+              yum update -y
+              # send signal
+              /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource WordPressServersAutoScalingGroup --region ${AWS::Region}
+  WordPressServersAutoScalingGroup:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    DependsOn: WordPressMasterServerWaitCondition
+    CreationPolicy:
+      ResourceSignal:
+        Count: !Ref WordPressServerDesiredCapacity
+        Timeout: PT10M
+    UpdatePolicy:
+      AutoScalingReplacingUpdate:
+        WillReplace: 'true'
+      AutoScalingRollingUpdate:
+        MinInstancesInService: '0'
+        MaxBatchSize: '1'
+        WaitOnResourceSignals: 'true'
+        PauseTime: PT10M
+    Properties:
+      DesiredCapacity: !Ref WordPressServerDesiredCapacity
+      HealthCheckGracePeriod: 60
+      HealthCheckType: 'ELB'
+      LaunchTemplate: 
+        LaunchTemplateId: !Ref WordPressServerLaunchTemplate
+        Version: !GetAtt WordPressServerLaunchTemplate.LatestVersionNumber
+      TargetGroupARNs:
+        - !Ref WordPressTargetGroup
+      MaxSize: 1
+      MinSize: 0
+      Tags:
+        - Key: Name
+          Value: 'WordPressServer'
+          PropagateAtLaunch: true
+        - Key: role 
+          Value: 'reader' 
+          PropagateAtLaunch: true
+      VPCZoneIdentifier:
+        - !Ref PublicSubnetId1
+        - !Ref PublicSubnetId2
+  WordPressMasterServerWaitConditionHandle:
+    Type: 'AWS::CloudFormation::WaitConditionHandle'
+  WordPressMasterServerWaitCondition:
+    Type: 'AWS::CloudFormation::WaitCondition'
+    DependsOn:
+      - WordPressMasterServer
+    Properties:
+      Count: '1'
+      Handle: !Ref WordPressMasterServerWaitConditionHandle
+      Timeout: 900
+  WordPressMasterServer: 
+    Type: 'AWS::EC2::Instance' 
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          deploy_webserver:
+            - install_webserver
+            - build_wordpress
+            - override_php_ini
+            - install_wordpress
+            - start_webserver
+        install_webserver:
+          files:
+            /tmp/create_site_conf.sh:
+              content: !Sub |
+                #!/bin/bash -xe
+                if [ ! -f /etc/httpd/conf.d/${WPDirectory}.conf ]; then                    
+                   touch /etc/httpd/conf.d/${WPDirectory}.conf
+                   echo 'ServerName 127.0.0.1:80' >> /etc/httpd/conf.d/${WPDirectory}.conf
+                   echo 'DocumentRoot /var/www/wordpress/${WPDirectory}' >> /etc/httpd/conf.d/${WPDirectory}.conf
+                   echo '<Directory /var/www/wordpress/${WPDirectory}>' >> /etc/httpd/conf.d/${WPDirectory}.conf
+                   echo '  Options Indexes FollowSymLinks' >> /etc/httpd/conf.d/${WPDirectory}.conf
+                   echo '  AllowOverride All' >> /etc/httpd/conf.d/${WPDirectory}.conf
+                   echo '  Require all granted' >> /etc/httpd/conf.d/${WPDirectory}.conf
+                   echo '</Directory>' >> /etc/httpd/conf.d/${WPDirectory}.conf
+                fi
+              mode: 000500
+              owner: root
+              group: root
+          commands:
+            create_site_conf:
+              command: ./create_site_conf.sh
+              cwd: /tmp
+              ignoreErrors: false
+        build_wordpress:
+          files:
+            /tmp/install_wordpress.sh:
+              content: !Sub |
+                  #!/bin/bash -xe
+                  
+                  # install wp-cli
+                  if [ ! -f /bin/wp/wp-cli.phar ]; then
+                      curl -o /bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+                      chmod +x /bin/wp
+                  fi
+                  
+                  # make site directory
+                  if [ ! -d /var/www/wordpress/${WPDirectory} ]; then                    
+                      mkdir -p /var/www/wordpress/${WPDirectory}
+                  
+                      cd /var/www/wordpress/${WPDirectory}
+                      # install wordpress if not installed
+                      # use public alb host name if wp domain name was empty
+                      if ! $(wp core is-installed --allow-root); then
+                          wp core download --version='${WPVersion}' --locale=ja --allow-root  
+                          wp core config --dbname='${DBName}' --dbuser='${DBMasterUsername}' --dbpass='${DBMasterUserPassword}' --dbhost='${RDSEndpointAddress}' --dbprefix=wp_ --allow-root
+                          wp core install --url='https://${WPDomainName}' --title='${WPTitle}' --admin_user='${WPAdminUsername}' --admin_password='${WPAdminPassword}' --admin_email='${WPAdminEmail}' --skip-email --allow-root
+                          sed -i "/$table_prefix = 'wp_';/ a \$_SERVER['HTTPS'] = 'on';" /var/www/wordpress/${WPDirectory}/wp-config.php
+
+                          # S3 Plugin Setting
+                          wp plugin install amazon-s3-and-cloudfront
+                          echo "define( 'AS3CF_AWS_USE_EC2_IAM_ROLE', true );" | tee -a /var/www/wordpress/${WPDirectory}/wp-config.php
+
+                          # set permissions of wordpress site directories 
+                          chown -R apache:apache /var/www/wordpress/${WPDirectory}
+                          chmod u+wrx /var/www/wordpress/${WPDirectory}/wp-content/*
+                      fi
+                      RESULT=$?
+                      if [ $RESULT -eq 0 ]; then
+                          touch /var/www/wordpress/${WPDirectory}/wordpress.initialized
+                            else
+                          touch /var/www/wordpress/${WPDirectory}/wordpress.failed
+                      fi
+                  fi
+              mode: 000500
+              owner: root
+              group: root
+        override_php_ini: 
+          files:
+            /etc/php.d/wordpress-php.ini:
+              content: !Sub |
+                memory_limit = 128M
+                post_max_size = 0
+                upload_max_filesize = 64M
+                max_input_time = 60
+                max_execution_time = 30
+              mode: 000500
+              owner: root
+              group: root
+        install_wordpress:
+          commands:
+            install_wordpress:
+              command: ./install_wordpress.sh
+              cwd: /tmp
+              ignoreErrors: false          
+        start_webserver:
+          services:
+            sysvinit:
+              httpd:
+                enabled: true
+                ensureRunning: true
+    Properties: 
+      LaunchTemplate: 
+        LaunchTemplateId: !Ref WordPressServerLaunchTemplate
+        Version: !GetAtt WordPressServerLaunchTemplate.LatestVersionNumber
+      Tags: 
+        - Key: Name 
+          Value: 'WordPressMasterServer' 
+        - Key: role 
+          Value: 'master' 
+      UserData: 
+        'Fn::Base64': 
+          !Sub | 
+            #!/bin/bash -ex 
+            # Update 
+            yum update -y 
+ 
+            # Install packages
+            amazon-linux-extras install php7.2 -y
+            yum -y install mysql httpd php-mbstring php-xml
+
+            # Setting Up Configs 
+            mkdir -p /var/www/wordpress
+            /opt/aws/bin/cfn-init --configsets deploy_webserver --verbose --stack ${AWS::StackName} --resource WordPressMasterServer --region ${AWS::Region}
+
+            # send signal 
+            /opt/aws/bin/cfn-signal -e $? '${WordPressMasterServerWaitConditionHandle}' 
+
+Outputs:
+  WordPressALBDnsName:
+    Value: !GetAtt WordPressALB.DNSName 
+    Export:
+      Name: !Sub '${AWS::StackName}-WordPressALBDnsName'
+
