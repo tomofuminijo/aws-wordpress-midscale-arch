@@ -1,8 +1,11 @@
 # **小規模 〜 中規模WordPress アーキテクチャ**
 
 中規模向けのWordPress アーキテクチャを自動構成するCloudFormation Template を提供します。
-WordPress のリファレンスアーキテクチャは以下のURL で提供されていますが、コストが高くなりがちですので、なるべく低コストで小規模〜中規模でも利用できるようなアーキテクチャにしています。
-https://github.com/aws-samples/aws-refarch-wordpress/blob/master/README.md
+WordPress のリファレンスアーキテクチャは以下のURL で提供されていますが、コストが高くなりがちですので、なるべく低コストで小規模〜中規模でも利用できるようなアーキテクチャにしています。  
+
+
+[https://github.com/aws-samples/aws-refarch-wordpress](https://github.com/aws-samples/aws-refarch-wordpress)
+
 
 ## 概要
 
@@ -11,10 +14,12 @@ https://github.com/aws-samples/aws-refarch-wordpress/blob/master/README.md
 WordPress 用のEC2 インスタンスは2種類用意します。記事投稿や運用管理ようのMaster インスタンスと記事参照用のReader インスタンスです。Reader インスタンスはASG 構成とします。WordPress のアップデートやOS のパッチ更新などはMaster に対して実施します。Master からAMI を作成してReader 用のASG に適用するといった運用になります。  
 WordPress 前段には、Application Load Balancder(ALB) を配置します。管理系のリクエストは、Master インスタンスにルーティングし、その他のリクエストはASG 配下のReader インスタンスへルーティングするように設定します。
 データベースはRDS (MySQL) を利用します。コストを考えて、Multi-AZ 構成はオプションで選択できるようにします。RDS が落ちてから復旧するまである程度時間が掛かってもよいという場合にはシングル構成がコスト効率が良いです。  
-画像データはS3 を利用します。その際にWordPress のプラグインを構成します。  
+画像データはS3 に格納します。その際にWordPress のプラグインを構成します。  
 エンドユーザからのアクセスは、Route 53 で名前解決をしてCloudFront 経由でALB にリクエストをルーティングします。画像データの場合は、S3 にルーティングします。  
 
-なお、現状のテンプレートは**東京リージョンのみ対応**しています。
+なお、現状のテンプレートは**東京リージョンのみ対応**しています。   
+
+今回の手順では、各Stack を個別に作成していますが、各Stack は関連するStack の情報をパラメータで受け取るようにしているため、Nest 構造にして一度にすべてを構成することも可能です。
 
 ## 前提
 ブログの運用をするためのドメイン名がすでに決まっており、ドメインの取得およびRoute53 のホストゾーンがすでに完了しているとします。  
