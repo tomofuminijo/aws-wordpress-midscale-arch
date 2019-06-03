@@ -317,8 +317,11 @@ done
 
 ```
 
-Web レイヤー Stack の更新を実施します。
-Desireted Capacity を任意の数に設定して、先ほど作成したAMI を指定してStack を更新します。UpdateStack を実行する際に、前回と変更がパラメータには**UsePreviousValue=true** をセットしておきます。こうすることで前回実行時のパラメータを別途用意する必要がありません。テンプレートが前回実行時と変わらない場合は、同じように**--use-previous-template** を指定することでテンプレートを別途用意する必要はありません。
+
+Web レイヤー Stack の更新を実施します。  
+Desireted Capacity を任意の数に設定して、先ほど作成したAMI を指定してStack を更新します。  
+UpdateStack を実行する際に、前回実行時と変わらないパラメータには**UsePreviousValue=true** をセットしておきます。こうすることで前回実行時のパラメータを別途用意する必要がありません。テンプレートが前回実行時と変わらない場合は、同じように **--use-previous-template** を指定することでテンプレートを別途用意する必要がなくなります。
+
 
 ```sh
 
