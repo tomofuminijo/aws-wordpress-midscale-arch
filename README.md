@@ -99,19 +99,19 @@ aws s3 cp templates/ s3://${TEMPLATES_BUCKET_NAME}/${TEMPLATES_PREFIX} --recursi
 aws cloudformation create-stack --stack-name ${WORDPRESS_STACK_NAME} \
     --template-body file://templates/wordpress-midarch-master.yaml \
     --parameters \
-    ParameterKey=WPDomainName,ParameterValue=${WORDPRESS_DOMAIN_NAME} \
-    ParameterKey=WPTitle,ParameterValue=${WORDPRESS_TITLE} \
-    ParameterKey=WPAdminEmail,ParameterValue=${WORDPRESS_ADMIN_EMAIL} \
-    ParameterKey=WPAdminUsername,ParameterValue=${WORDPRESS_ADMIN_USERNAME} \
-    ParameterKey=WPAdminPassword,ParameterValue=${WORDPRESS_ADMIN_PASSWORD} \
-    ParameterKey=TemplatesBucketName,ParameterValue=${TEMPLATES_BUCKET_NAME} \
-    ParameterKey=TemplatesPrefix,ParameterValue=${TEMPLATES_PREFIX} \
-    ParameterKey=DBMultiAZBoolean,ParameterValue=${RDS_MULTI_AZ_ENABLED}
-    ParameterKey=WordPressContentsS3BucketName,ParameterValue=${S3_CONTENTS_BUCKET_NAME} \
-    ParameterKey=WordPressLogsS3BucketName,ParameterValue=${S3_LOGS_BUCKET_NAME}
-    ParameterKey=PublicAlbAcmCertificate,ParameterValue=${WEB_ACM_CERTIFICATE_ARN}  \
+    ParameterKey=WPDomainName,ParameterValue="${WORDPRESS_DOMAIN_NAME}" \
+    ParameterKey=WPTitle,ParameterValue="${WORDPRESS_TITLE}" \
+    ParameterKey=WPAdminEmail,ParameterValue="${WORDPRESS_ADMIN_EMAIL}" \
+    ParameterKey=WPAdminUsername,ParameterValue="${WORDPRESS_ADMIN_USERNAME}" \
+    ParameterKey=WPAdminPassword,ParameterValue="${WORDPRESS_ADMIN_PASSWORD}" \
+    ParameterKey=TemplatesBucketName,ParameterValue="${TEMPLATES_BUCKET_NAME}" \
+    ParameterKey=TemplatesPrefix,ParameterValue="${TEMPLATES_PREFIX}" \
+    ParameterKey=DBMultiAZBoolean,ParameterValue="${RDS_MULTI_AZ_ENABLED}" \
+    ParameterKey=WordPressContentsS3BucketName,ParameterValue="${S3_CONTENTS_BUCKET_NAME}" \
+    ParameterKey=WordPressLogsS3BucketName,ParameterValue="${S3_LOGS_BUCKET_NAME}" \
+    ParameterKey=PublicAlbAcmCertificate,ParameterValue="${WEB_ACM_CERTIFICATE_ARN}" \
+    ParameterKey=CloudFrontAcmCertificate,ParameterValue="${CF_ACM_CERTIFICATE_ARN}" \
     ParameterKey=WordPressServerDesiredCapacity,ParameterValue=0 \
-    ParameterKey=CloudFrontAcmCertificate,ParameterValue=${CF_ACM_CERTIFICATE_ARN}  \
     --capabilities CAPABILITY_NAMED_IAM
 ```
 
