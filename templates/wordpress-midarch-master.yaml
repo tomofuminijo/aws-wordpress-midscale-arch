@@ -1,0 +1,217 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: WordPress Middle Scale Architecture Master Template
+
+Metadata:
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: WordPress Settings
+      Parameters:
+        - WPDomainName
+        - WPTitle
+        - WPAdminEmail
+        - WPAdminUsername
+        - WPAdminPassword
+    - Label:
+        default: CloudFront Settings
+      Parameters:
+        - TemplatesBucketName
+        - TemplatesPrefix
+    - Label:
+        default: Database Tier
+      Parameters:
+        - DBMultiAZBoolean
+    - Label:
+        default: S3 Tier
+      Parameters:
+        - WordPressContentsS3BucketName
+        - WordPressLogsS3BucketName
+    - Label:
+        default: Web & Edge Tier
+      Parameters:
+        - WordPressServerDesiredCapacity
+        - WordPressAMI
+        - PublicAlbAcmCertificate
+        - CloudFrontAcmCertificate
+    ParameterLabels:
+      WPDomainName:
+        default: 'WordPress Domain Name (ex: blog.example.com)'
+      WPTitle:
+        default: WordPress Title
+      WPAdminEmail:
+        default: WordPress Admin Email
+      WPAdminUsername:
+        default: WordPress Admin User Name
+      WPAdminPassword:
+        default: WordPress Admin Password
+      TemplatesBucketName:
+        default: Bucket name where template is stored
+      TemplatesPrefix:
+        default: 'Temprates prefix where template is stored (ex: temptates/ )'
+      DBMultiAZBoolean:
+        default: RDS Multi-AZ Enabled
+      WordPressContentsS3BucketName:
+        default: Bucket Name for WordPress contents
+      WordPressLogsS3BucketName:
+        default: Bucket Name for WordPress ALB logs
+      WordPressServerDesiredCapacity:
+        default: WordPress Server Desired Capacity
+      WordPressAMI:
+        default: AMI in which WordPress is installed and configured 
+      PublicAlbAcmCertificate:
+        default: ALB Certificate ARN
+      CloudFrontAcmCertificate:
+        default: CloudFront Certificate ARN
+
+Parameters:
+
+  WPDomainName:
+    AllowedPattern: ^$|(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$
+    Description: '[ Optional ] The main domain name of the WordPress site (e.g. example.com). Leave empty to use the ALB DNS name for the WordPress site.'
+    Default: ''
+    Type: String
+  WPTitle:
+    AllowedPattern: ^([a-zA-Z0-9])([a-zA-Z0-9 _-]*)([a-zA-Z0-9])$
+    Description: The WordPress website title.
+    Type: String
+  WPAdminEmail:
+    AllowedPattern: ^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$
+    Description: The WordPress admin email address.
+    Type: String
+  WPAdminPassword:
+    AllowedPattern: ^([a-zA-Z0-9`~!#$%^&*()_+,\\-])*$
+    ConstraintDescription: Must be letters (upper or lower), numbers, and these special characters '_'`~!#$%^&*()_+,-   
+    Description: The WordPress admin password.
+    Type: String
+    NoEcho: true
+  WPAdminUsername:
+    AllowedPattern: ^([a-zA-Z0-9])([a-zA-Z0-9_-])*([a-zA-Z0-9])$
+    Description: The WordPress admin username.
+    Type: String
+  TemplatesBucketName:
+    Description: Bucket name where template is stored
+    Type: String
+  TemplatesPrefix:
+    Description: 'Temprates prefix where template is stored (ex: temptates )'
+    Type: String
+  DBMultiAZBoolean:
+    AllowedValues:
+      - true
+      - false
+    Default: false
+    Description: Indicates whether the DB instances are mauti-az.
+    Type: String
+  WordPressContentsS3BucketName:
+    Description: Bucket Name for contents of WordPress
+    Type: String
+  WordPressLogsS3BucketName:
+    Description: Bucket Name for logs of WordPress
+    Type: String
+  WordPressAMI:
+    Description: WordPress installed & Configured AMI
+    Type: String
+    Default: ''
+  WordPressServerDesiredCapacity:
+    Description: WordPress Server ASG DesiredCapacity
+    Type: String
+    Default: '1'
+  PublicAlbAcmCertificate:
+    AllowedPattern: ^$|(arn:aws:acm:)([a-z0-9/:-])*([a-z0-9])$
+    Description: 'The AWS Certification Manager certificate ARN for the ALB certificate - this certificate should be created in the region you wish to run the ALB and must reference the WordPress domain name you use below.'
+    Type: String
+  CloudFrontAcmCertificate:
+    AllowedPattern: ^$|(arn:aws:acm:)([a-z0-9/:-])*([a-z0-9])$
+    Description: 'The AWS Certification Manager certificate ARN for the CloudFormation certificate - this certificate should be created in the region you wish to run the ALB and must reference the WordPress domain name you use below.'
+    Type: String
+
+Resources:
+
+  nw:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${TemplatesBucketName}/${TemplatesPrefix}/wordpress-midarch-01-nw.yaml
+
+  rds:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: [ nw ]
+    Properties:
+      Parameters:
+        PrivateSubnetId1:
+          !GetAtt [ nw, Outputs.PrivateSubnetId1 ]
+        PrivateSubnetId2:
+          !GetAtt [ nw, Outputs.PrivateSubnetId2 ]
+        DBSecurityGroup:
+          !GetAtt [ nw, Outputs.DBSecurityGroup ]
+        DBMultiAZBoolean:
+          !Ref DBMultiAZBoolean
+      TemplateURL: !Sub https://s3.amazonaws.com/${TemplatesBucketName}/${TemplatesPrefix}/wordpress-midarch-02-rds.yaml
+    
+  s3:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        WordPressContentsS3BucketName:
+          !Ref WordPressContentsS3BucketName
+        WordPressLogsS3BucketName:
+          !Ref WordPressLogsS3BucketName
+      TemplateURL: !Sub https://s3.amazonaws.com/${TemplatesBucketName}/${TemplatesPrefix}/wordpress-midarch-03-s3.yaml
+
+  web:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: [ nw, rds, s3 ]
+    Properties:
+      Parameters:
+        VPCId:
+          !GetAtt [ nw, Outputs.VPCId ]
+        PublicSubnetId1:
+          !GetAtt [ nw, Outputs.PublicSubnetId1 ]
+        PublicSubnetId2:
+          !GetAtt [ nw, Outputs.PublicSubnetId2 ]
+        LBSecurityGroup:
+          !GetAtt [ nw, Outputs.LBSecurityGroup ]
+        WebSecurityGroup:
+          !GetAtt [ nw, Outputs.WebSecurityGroup ]
+        WordPressContentsS3BucketName:
+          !Ref WordPressContentsS3BucketName
+        WordPressLogsS3BucketName:
+          !Ref WordPressLogsS3BucketName
+        RDSSecret:
+          !GetAtt [ rds, Outputs.RDSSecret ]
+        PublicAlbAcmCertificate:
+          !Ref PublicAlbAcmCertificate
+        WordPressServerDesiredCapacity:
+          !Ref WordPressServerDesiredCapacity
+        WordPressAMI:
+          !Ref WordPressAMI
+        WPDomainName:
+          !Ref WPDomainName
+        WPTitle:
+          !Ref WPTitle
+        WPAdminEmail:
+          !Ref WPAdminEmail
+        WPAdminUsername:
+          !Ref WPAdminUsername
+        WPAdminPassword:
+          !Ref WPAdminPassword
+      TemplateURL: !Sub https://s3.amazonaws.com/${TemplatesBucketName}/${TemplatesPrefix}/wordpress-midarch-04-web.yaml
+    
+  cloudfront:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: [ web ]
+    Properties:
+      Parameters:
+        WordPressContentsS3BucketName:
+          !Ref WordPressContentsS3BucketName
+        CloudFrontAcmCertificate:
+          !Ref CloudFrontAcmCertificate
+        WPDomainName:
+          !Ref WPDomainName
+        WordPressALBDnsName:
+          !GetAtt [ web, Outputs.WordPressALBDnsName ]
+      TemplateURL: !Sub https://s3.amazonaws.com/${TemplatesBucketName}/${TemplatesPrefix}/wordpress-midarch-05-cloudfront.yaml
+
+Outputs:
+  DnsEndpoint:
+    Description: WordPress CloudFront DNS Name for Route 53 settings
+    Value: !GetAtt [ cloudfront, Outputs.DnsEndpoint ]

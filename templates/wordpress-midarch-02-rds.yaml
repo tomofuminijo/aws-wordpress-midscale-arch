@@ -125,7 +125,7 @@ Resources:
             - '-'
             - - !Ref 'AWS::StackName'
               - RDB
-    DeletionPolicy: 'Delete'
+    DeletionPolicy: 'Snapshot'
 Outputs:
   RDSSecret:
     Value: !Ref WordPressRDSSecret

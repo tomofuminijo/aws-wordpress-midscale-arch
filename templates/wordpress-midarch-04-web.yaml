@@ -378,7 +378,7 @@ Resources:
                       cd /var/www/wordpress/${WPDirectory}
 
                       # Get RDS Secrets
-                      RDSSECRETS=$(aws secretsmanager  get-secret-value --secret-id WordPressRDSSecret-PaUgRaJJPSEC --query "SecretString" --region ${AWS::Region} --output text)
+                      RDSSECRETS=$(aws secretsmanager  get-secret-value --secret-id ${RDSSecret} --query "SecretString" --region ${AWS::Region} --output text)
                       DBName=$(echo ${!RDSSECRETS} | jq -r '.dbname')
                       DBMasterUsername=$(echo ${!RDSSECRETS} | jq -r '.username')
                       DBMasterUserPassword=$(echo ${!RDSSECRETS} | jq -r '.password')
