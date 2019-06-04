@@ -36,7 +36,7 @@ Metadata:
         - CloudFrontAcmCertificate
     ParameterLabels:
       WPDomainName:
-        default: 'WordPress Domain Name (ex: blog.example.com)'
+        default: 'WordPress Domain Name'
       WPTitle:
         default: WordPress Title
       WPAdminEmail:
@@ -46,9 +46,9 @@ Metadata:
       WPAdminPassword:
         default: WordPress Admin Password
       TemplatesBucketName:
-        default: Bucket name where template is stored
+        default: Bucket name for Templates
       TemplatesPrefix:
-        default: 'Temprates prefix where template is stored (ex: temptates/ )'
+        default: 'Temprates prefix'
       DBMultiAZBoolean:
         default: RDS Multi-AZ Enabled
       WordPressContentsS3BucketName:
@@ -58,7 +58,7 @@ Metadata:
       WordPressServerDesiredCapacity:
         default: WordPress Server Desired Capacity
       WordPressAMI:
-        default: AMI in which WordPress is installed and configured 
+        default: WordPress installed & Configured AMI
       PublicAlbAcmCertificate:
         default: ALB Certificate ARN
       CloudFrontAcmCertificate:
@@ -68,7 +68,7 @@ Parameters:
 
   WPDomainName:
     AllowedPattern: ^$|(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$
-    Description: '[ Optional ] The main domain name of the WordPress site (e.g. example.com). Leave empty to use the ALB DNS name for the WordPress site.'
+    Description: 'The main domain name of the WordPress site (e.g. blog.example.com). '
     Default: ''
     Type: String
   WPTitle:
@@ -109,7 +109,7 @@ Parameters:
     Description: Bucket Name for logs of WordPress
     Type: String
   WordPressAMI:
-    Description: WordPress installed & Configured AMI
+    Description:  AMI in which WordPress is installed and configured 
     Type: String
     Default: ''
   WordPressServerDesiredCapacity:
@@ -122,7 +122,7 @@ Parameters:
     Type: String
   CloudFrontAcmCertificate:
     AllowedPattern: ^$|(arn:aws:acm:)([a-z0-9/:-])*([a-z0-9])$
-    Description: 'The AWS Certification Manager certificate ARN for the CloudFormation certificate - this certificate should be created in the region you wish to run the ALB and must reference the WordPress domain name you use below.'
+    Description: 'The AWS Certification Manager certificate ARN for the CloudFormation certificate - this certificate should be created in us-east-1 and must reference the WordPress domain name you use below.'
     Type: String
 
 Resources:
