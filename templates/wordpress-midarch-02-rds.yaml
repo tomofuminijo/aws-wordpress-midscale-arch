@@ -78,7 +78,7 @@ Resources:
         SecretStringTemplate: '{"username": "admin"}'
         GenerateStringKey: "password"
         PasswordLength: 16
-        ExcludeCharacters: '"@/\'
+        ExcludePunctuation: 'true'
   SecretRDSInstanceAttachment:
     Type: "AWS::SecretsManager::SecretTargetAttachment"
     Properties:
@@ -89,7 +89,6 @@ Resources:
     Type: AWS::RDS::DBSubnetGroup
     Properties: 
       DBSubnetGroupDescription: 'DBSubnet Group for Wordpress DB'
-      DBSubnetGroupName: 'WordPressDBSubnetGroup'
       SubnetIds:
         - !Ref PrivateSubnetId1
         - !Ref PrivateSubnetId2
