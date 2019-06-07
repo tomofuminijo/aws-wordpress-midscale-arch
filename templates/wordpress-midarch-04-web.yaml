@@ -296,7 +296,7 @@ Resources:
         PauseTime: PT10M
     Properties:
       DesiredCapacity: !Ref WordPressServerDesiredCapacity
-      HealthCheckGracePeriod: 60
+      HealthCheckGracePeriod: 180
       HealthCheckType: 'ELB'
       LaunchTemplate: 
         LaunchTemplateId: !Ref WordPressServerLaunchTemplate

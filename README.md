@@ -1,8 +1,8 @@
 # **小規模 〜 中規模WordPress アーキテクチャ**
 
-小から中規模向けのWordPress アーキテクチャを自動構成するCloudFormation Template を提供します。
+小から中規模向けの低コストかつ可用性/拡張性を持つWordPress アーキテクチャを自動構成するCloudFormation Template を提供します。まずは小さく低コストで始めたいという場合を想定しています。
 
-***Note: WordPress のリファレンスアーキテクチャは [ここ](https://github.com/aws-samples/aws-refarch-wordpress) で提供されていますが、コストが高くなりがちですので、なるべく低コストで小規模〜中規模でも利用できるようなアーキテクチャにしています。より大規模で本格的に運用したい場合は、上記のレイファレンスアーキテクチャをご検討ください***
+***Note: WordPress のリファレンスアーキテクチャは [ここ](https://github.com/aws-samples/aws-refarch-wordpress) で提供されています。より大規模で本格的に運用したい場合は、このリファレンスアーキテクチャをご検討ください。***
 
 ## 概要
 
