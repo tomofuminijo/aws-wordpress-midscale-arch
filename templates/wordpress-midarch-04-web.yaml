@@ -398,7 +398,6 @@ Resources:
 
                           # S3 Plugin Setting
                           wp plugin install amazon-s3-and-cloudfront
-                          echo "define( 'AS3CF_AWS_USE_EC2_IAM_ROLE', true );" | tee -a /var/www/wordpress/${WPDirectory}/wp-config.php
 
                           # set permissions of wordpress site directories 
                           chown -R apache:apache /var/www/wordpress/${WPDirectory}
