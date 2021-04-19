@@ -137,6 +137,7 @@ aws cloudformation wait stack-create-complete --stack-name $WORDPRESS_STACK_NAME
 
 Route 53 はCFn ではなく CLI のみで設定します。以下のコマンドを実行してください。   
 CloudFront Stack がまだ作成中の場合は、マネージメントコンソールでCloudFront の"Domain Name" をコピーして利用してください。
+なお、以下のコマンド内にて直書きしている'Z2FDTNDATAQYW2'というHostedZoneId はCloudFront 用のHostedZoneId であり、この固定値のままご利用ください。
 
 
 ```sh
